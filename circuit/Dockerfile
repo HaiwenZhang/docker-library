@@ -2,7 +2,7 @@
 # DOCKER-VERSION    1.12.6
 #
 # Dockerfile for the ServiceController of Aurora Platform.
-# Usage: docker pull pinewong/aurora-service
+# Usage: docker pull cloudeda/circuit
 
 FROM debian:jessie
 MAINTAINER pinewong <pinewong@163.com>
@@ -28,28 +28,39 @@ RUN \
     rm -rf /var/lib/apt/lists/*
 
 # Dependence
-RUN apt-get update
-RUN apt-get install -y maven git libtool autoconf build-essential pkg-config gettext
+RUN apt-get update && apt-get install -y maven git libtool autoconf build-essential pkg-config gettext
 
-# RUN sed -i '$d' /etc/maven/settings.xml
-# RUN echo -e "  <localRepository>/app/maven</localRepository>\n</settings>" >> /etc/maven/settings.xml
+# Zeromq
+RUN \
+  cd /tmp && \
+  git clone https://github.com/zeromq/libzmq.git && \
+  cd /tmp/libzmq/ && \
+  ./autogen.sh && \
+  ./configure && \
+  make -j 4 && \
+  make check && \
+  make install && \
+  ldconfig
 
-WORKDIR /tmp
-RUN git clone https://github.com/zeromq/libzmq.git
-WORKDIR /tmp/libzmq/
-RUN ./autogen.sh
-RUN ./configure
-RUN make -j 4
-RUN make check
-RUN make install
-RUN ldconfig
+# jzmq
+RUN \
+  cd /tmp && \
+  git clone https://github.com/zeromq/jzmq.git && \
+  cd /tmp/jzmq/jzmq-jni/ && \
+  ./autogen.sh && \
+  ./configure && \
+  make && \
+  make install && \
+  cd /tmp/jzmq/ && \
+  mvn package
 
-WORKDIR /tmp
-RUN git clone https://github.com/zeromq/jzmq.git
-WORKDIR /tmp/jzmq/jzmq-jni/
-RUN ./autogen.sh
-RUN ./configure
-RUN make
-RUN make install
-WORKDIR /tmp/jzmq/
-RUN mvn package
+# Workspace
+RUN \
+  mkdir -p /app/source && \
+  mkdir -p /app/design && \
+  mkdir -p /app/log && \
+  mkdir -p /app/local && \
+  mkdir -p /app/local/cache && \
+  mkdir -p /app/local/pids && \
+  mkdir -p /app/local/sessions && \
+  mkdir -p /app/local/sockets
