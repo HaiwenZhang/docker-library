@@ -53,14 +53,3 @@ RUN \
   make install && \
   cd /tmp/jzmq/ && \
   mvn package
-
-# Workspace
-RUN \
-  mkdir -p /app/source && \
-  mkdir -p /app/design && \
-  mkdir -p /app/log && \
-  mkdir -p /app/local && \
-  mkdir -p /app/local/cache && \
-  mkdir -p /app/local/pids && \
-  mkdir -p /app/local/sessions && \
-  mkdir -p /app/local/sockets
