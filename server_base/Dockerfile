@@ -53,3 +53,6 @@ RUN \
   make install && \
   cd /tmp/jzmq/ && \
   mvn package
+
+# Project
+WORKDIR /app
