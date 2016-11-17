@@ -1,1 +1,0 @@
-docker build -t cloudeda/server_base:latest .

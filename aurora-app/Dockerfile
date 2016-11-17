@@ -1,11 +1,5 @@
-# MAINTAINER        pinewong <pinewong@163.com>
-# DOCKER-VERSION    1.12.6
-#
-# Dockerfile for the auroraWS of Aurora Platform.
-# Usage: docker pull cloudeda/web
-
 FROM ruby:2.3.0
-MAINTAINER pinewong <pinewong@163.com>
+MAINTAINER PineWong <pinewong@163.com>
 
 # see update.sh for why all "apt-get install"s have to stay as one long line
 RUN \
@@ -20,6 +14,7 @@ RUN \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Project
+RUN mkdir -p /app/log && mkdir -p /app/tmp
 WORKDIR /app
 
 # Bundle
