@@ -1,20 +1,24 @@
 FROM centos:7
 MAINTAINER PineWong <pinewong@163.com>
 
+# Dependence
+RUN yum update && yum install -y wget maven git libtool autoconf build-essential pkg-config gettext
+
 # Oracle Java 1.8
 RUN \
-  curl -O http://download.oracle.com/otn-pub/java/jdk/8u111-b14/jdk-8u111-linux-x64.rpm && \
-  rpm -ivh jdk-8u111-linux-x64.rpm && \
-  echo '#!/bin/bash' > /etc/profile.d/java.sh && \
-  echo 'JAVA_HOME=/usr/java/jdk1.8.0_111/' >> /etc/profile.d/java.sh && \
-  echo 'PATH=$JAVA_HOME/bin:$PATH' >> /etc/profile.d/java.sh && \
-  echo 'export PATH JAVA_HOME' >> /etc/profile.d/java.sh && \
-  echo 'export CLASSPATH=.' >> /etc/profile.d/java.sh && \
-  chmod +x /etc/profile.d/java.sh && \
-  source /etc/profile.d/java.sh
+  cd /opt/ && \
+  wget --no-cookies --no-check-certificate --header "Cookie: gpw_e24=http%3A%2F%2Fwww.oracle.com%2F; oraclelicense=accept-securebackup-cookie" "http://download.oracle.com/otn-pub/java/jdk/8u111-b14/jdk-8u111-linux-x64.tar.gz" && \
+  tar -xzf jdk-8u111-linux-x64.tar.gz && \
 
-# Dependence
-RUN apt-get update && apt-get install -y maven git libtool autoconf build-essential pkg-config gettext
+  cd /opt/jdk1.8.0_111/ && \
+  alternatives --install /usr/bin/java java /opt/jdk1.8.0_111/bin/java 2 && \
+  alternatives --config java && \
+
+  alternatives --install /usr/bin/jar jar /opt/jdk1.8.0_111/bin/jar 2 && \
+  alternatives --install /usr/bin/javac javac /opt/jdk1.8.0_111/bin/javac 2 && \
+  alternatives --set jar /opt/jdk1.8.0_111/bin/jar && \
+  alternatives --set javac /opt/jdk1.8.0_111/bin/javac && \
+  java -version
 
 # Zeromq
 RUN \
@@ -41,7 +45,7 @@ RUN \
   mvn package
 
 # clean
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN yum clean && rm -rf /var/lib/apt/lists/*
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
