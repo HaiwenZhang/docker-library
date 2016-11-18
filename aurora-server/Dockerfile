@@ -15,7 +15,7 @@ RUN \
   source /etc/profile && \
   rm /tmp/jdk-8u102-linux-x64.rpm && \
 
-RUN yum update && yum install -y maven git libtool autoconf build-essential pkg-config gettext  && \
+RUN yum update && yum install -y maven git libtool autoconf build-essential pkg-config gettext
 
 # Zeromq
 RUN \
