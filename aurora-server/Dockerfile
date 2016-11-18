@@ -8,7 +8,7 @@ RUN yum update && yum install -y wget
 RUN \
   cd /tmp && \
   wget --header "Cookie: oraclelicense=accept-securebackup-cookie" http://download.oracle.com/otn-pub/java/jdk/8u102-b14/jdk-8u102-linux-x64.rpm && \
-  yum localinstall jdk-8u102-linux-x64.rpm && \
+  yum localinstall -y jdk-8u102-linux-x64.rpm && \
   echo 'export JAVA_HOME=/usr/java/jdk1.8.0_102/' >> /etc/profile && \
   echo 'export JRE_HOME=/usr/java/jdk1.8.0_102/jre' >> /etc/profile && \
   echo 'export PATH=$PATH:$HOME/bin:$JAVA_HOME/bin' >> /etc/profile && \
