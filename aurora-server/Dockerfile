@@ -1,11 +1,9 @@
 FROM centos:7
 MAINTAINER PineWong <pinewong@163.com>
 
-# Dependence
-RUN yum update && yum install -y wget
-
 # Oracle Java 1.8
 RUN \
+  yum update && yum install -y wget && \
   cd /tmp && \
   wget --header "Cookie: oraclelicense=accept-securebackup-cookie" http://download.oracle.com/otn-pub/java/jdk/8u102-b14/jdk-8u102-linux-x64.rpm && \
   yum localinstall -y jdk-8u102-linux-x64.rpm && \
@@ -15,31 +13,21 @@ RUN \
   source /etc/profile && \
   rm /tmp/jdk-8u102-linux-x64.rpm
 
-RUN yum update && yum install -y maven git libtool autoconf build-essential pkg-config gettext
-
 # Zeromq
 RUN \
+  yum update && yum install -y wget libtool pkg-config build-essential autoconf automake && \
   cd /tmp && \
-  git clone https://github.com/zeromq/libzmq.git && \
-  cd /tmp/libzmq/ && \
-  ./autogen.sh && \
-  ./configure && \
-  make -j 4 && \
-  make check && \
-  make install && \
-  ldconfig
+  wget https://github.com/zeromq/zeromq3-x/releases/download/v3.2.5/zeromq-3.2.5.tar.gz && \
+  tar -zxf zeromq-3.2.5.tar.gz && cd zeromq-3.2.5/ && \
+  ./configure && make && make install
 
 # jzmq
 RUN \
   cd /tmp && \
-  git clone https://github.com/zeromq/jzmq.git && \
-  cd /tmp/jzmq/jzmq-jni/ && \
-  ./autogen.sh && \
-  ./configure && \
-  make && \
-  make install && \
-  cd /tmp/jzmq/ && \
-  mvn package
+  cd /tmp && \
+  wget -O jzmq-3.1.0.tar.bz https://github.com/zeromq/jzmq/archive/v3.1.0.tar.gz && \
+  tar -zxf jzmq-3.1.0.tar.bz && cd jzmq-3.1.0/ && \
+  ./autogen.sh && ./configure && make && make install
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
