@@ -2,23 +2,20 @@ FROM centos:7
 MAINTAINER PineWong <pinewong@163.com>
 
 # Dependence
-RUN yum update && yum install -y wget maven git libtool autoconf build-essential pkg-config gettext
+RUN yum update && yum install -y wget
 
 # Oracle Java 1.8
 RUN \
-  cd /opt/ && \
-  wget --no-cookies --no-check-certificate --header "Cookie: gpw_e24=http%3A%2F%2Fwww.oracle.com%2F; oraclelicense=accept-securebackup-cookie" "http://download.oracle.com/otn-pub/java/jdk/8u111-b14/jdk-8u111-linux-x64.tar.gz" && \
-  tar -xzf jdk-8u111-linux-x64.tar.gz && \
+  cd /tmp && \
+  wget --header "Cookie: oraclelicense=accept-securebackup-cookie" http://download.oracle.com/otn-pub/java/jdk/8u102-b14/jdk-8u102-linux-x64.rpm
+  yum localinstall jdk-8u102-linux-x64.rpm && \
+  echo 'export JAVA_HOME=/usr/java/jdk1.8.0_102/' >> /etc/profile && \
+  echo 'export JRE_HOME=/usr/java/jdk1.8.0_102/jre' >> /etc/profile && \
+  echo 'export PATH=$PATH:$HOME/bin:$JAVA_HOME/bin' >> /etc/profile && \
+  source /etc/profile && \
+  rm /tmp/jdk-8u102-linux-x64.rpm && \
 
-  cd /opt/jdk1.8.0_111/ && \
-  alternatives --install /usr/bin/java java /opt/jdk1.8.0_111/bin/java 2 && \
-  alternatives --config java && \
-
-  alternatives --install /usr/bin/jar jar /opt/jdk1.8.0_111/bin/jar 2 && \
-  alternatives --install /usr/bin/javac javac /opt/jdk1.8.0_111/bin/javac 2 && \
-  alternatives --set jar /opt/jdk1.8.0_111/bin/jar && \
-  alternatives --set javac /opt/jdk1.8.0_111/bin/javac && \
-  java -version
+RUN yum update && yum install -y maven git libtool autoconf build-essential pkg-config gettext  && \
 
 # Zeromq
 RUN \
