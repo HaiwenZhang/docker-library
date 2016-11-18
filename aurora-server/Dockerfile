@@ -13,7 +13,7 @@ RUN \
   echo 'export JRE_HOME=/usr/java/jdk1.8.0_102/jre' >> /etc/profile && \
   echo 'export PATH=$PATH:$HOME/bin:$JAVA_HOME/bin' >> /etc/profile && \
   source /etc/profile && \
-  rm /tmp/jdk-8u102-linux-x64.rpm && \
+  rm /tmp/jdk-8u102-linux-x64.rpm
 
 RUN yum update && yum install -y maven git libtool autoconf build-essential pkg-config gettext
 
@@ -40,9 +40,6 @@ RUN \
   make install && \
   cd /tmp/jzmq/ && \
   mvn package
-
-# clean
-RUN yum clean && rm -rf /var/lib/apt/lists/*
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
