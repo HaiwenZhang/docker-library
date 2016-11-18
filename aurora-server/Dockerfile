@@ -15,7 +15,7 @@ RUN \
 
 # Zeromq
 RUN \
-  yum update && yum install -y wget gcc-c++ libtool autoconf automake && \
+  yum update && yum install -y wget gcc automake autoconf libtool make gcc-c++ && \
   cd /tmp && \
   wget https://github.com/zeromq/zeromq3-x/releases/download/v3.2.5/zeromq-3.2.5.tar.gz && \
   tar -zxf zeromq-3.2.5.tar.gz && cd zeromq-3.2.5/ && \
