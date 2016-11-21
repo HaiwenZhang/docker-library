@@ -27,7 +27,7 @@ RUN \
 RUN \
   cd /tmp && \
   wget https://github.com/zeromq/jzmq/archive/v3.1.0.tar.gz && \
-  tar -zxf v3.1.0.tar.bz && cd jzmq-3.1.0/ && \
+  tar -zxf v3.1.0.tar.gz && cd jzmq-3.1.0/ && \
   ./autogen.sh && ./configure && make && make install && \
   rm -r /tmp/*
 
