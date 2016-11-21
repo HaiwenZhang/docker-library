@@ -32,7 +32,7 @@ RUN \
 # Translayout need
 RUN mkdir -p /usr/share/fonts/wqy-microhei
 ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
-RUN fc-cache /usr/share/fonts/wqy-microhei && yum update && yum install -y gtk2 libXtst
+RUN yum update && yum install -y gtk2 libXtst && fc-cache /usr/share/fonts/wqy-microhei
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
