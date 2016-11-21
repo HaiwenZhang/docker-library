@@ -29,6 +29,11 @@ RUN \
   tar -zxf jzmq-3.1.0.tar.bz && cd jzmq-3.1.0/ && \
   ./autogen.sh && ./configure && make && make install
 
+# Translayout need
+RUN mkdir -p /usr/share/fonts/wqy-microhei
+ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
+RUN fc-cache /usr/share/fonts/wqy-microhei && yum update && yum install -y gtk2 libXtst
+
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
 WORKDIR /app
