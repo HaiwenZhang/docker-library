@@ -13,7 +13,7 @@ RUN \
   echo 'export JRE_HOME=/usr/java/jdk1.8.0_102/jre' >> /etc/profile && \
   echo 'export PATH=$PATH:$HOME/bin:$JAVA_HOME/bin' >> /etc/profile && \
   source /etc/profile && \
-  rm -r /rmp/*
+  rm -r /tmp/*
 
 # Zeromq
 RUN \
@@ -21,7 +21,7 @@ RUN \
   wget https://github.com/zeromq/zeromq3-x/releases/download/v3.2.5/zeromq-3.2.5.tar.gz && \
   tar -zxf zeromq-3.2.5.tar.gz && cd zeromq-3.2.5/ && \
   ./configure && make && make install && \
-  rm -r /rmp/*
+  rm -r /tmp/*
 
 # jzmq
 RUN \
@@ -29,7 +29,7 @@ RUN \
   wget https://github.com/zeromq/jzmq/archive/v3.1.0.tar.gz && \
   tar -zxf v3.1.0.tar.bz && cd jzmq-3.1.0/ && \
   ./autogen.sh && ./configure && make && make install && \
-  rm -r /rmp/*
+  rm -r /tmp/*
 
 # Translayout need
 RUN mkdir -p /usr/share/fonts/wqy-microhei
