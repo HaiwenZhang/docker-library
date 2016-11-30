@@ -2,7 +2,7 @@ FROM centos:7
 MAINTAINER PineWong <pinewong@163.com>
 
 # Dependence
-RUN yum update && yum install -y wget gcc automake autoconf libtool make gcc-c++ gtk2 libXtst && yum clean all
+RUN yum update && yum install -y wget gcc automake autoconf libtool make gcc-c++ gtk2 libXtst cmake bison && yum clean all
 
 # Oracle Java 1.8
 RUN \
@@ -35,6 +35,13 @@ RUN \
 RUN mkdir -p /usr/share/fonts/wqy-microhei
 ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
 RUN fc-cache /usr/share/fonts/wqy-microhei
+
+# Python3 and MKL
+RUN \
+  yum install epel-release && yum install python34 && yum remove epel-release && yum clean all && \
+  ln -s /usr/bin/python3 /usr/local/bin/python3
+ADD mkl_so/* /usr/local/lib/
+ADD asiv/* /usr/local/bin/
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
