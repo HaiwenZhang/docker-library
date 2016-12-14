@@ -1,7 +1,7 @@
 # coding: utf-8
-#source 'https://ruby.taobao.org'
+source 'https://mirrors.tuna.tsinghua.edu.cn/rubygems/'
 # https://gems.ruby-china.org'
-source ENV['GEM_MIRROR'] || "https://rubygems.org"
+# source ENV['GEM_MIRROR'] || "https://rubygems.org"
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
 gem 'rails', '4.2.5'
 gem 'tzinfo-data', '~> 1.2.2', platforms: [:mingw, :mswin, :x64_mingw]
@@ -70,6 +70,9 @@ end
 
 # zip file
 gem 'rubyzip', '~> 1.2'
+
+# spreadsheet handling tool
+gem 'roo', '~> 2.5'
 
 group :development, :test do
   # Call 'byebug' anywhere in the code to stop execution and get a debugger console

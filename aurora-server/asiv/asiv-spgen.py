@@ -1015,5 +1015,4 @@ if __name__ == "__main__":
         raise SystemExit
     projectDir = os.path.abspath(sys.argv[1])
     configFile = 'interface.md'
-    thisDesign = Design(projectDir + '/models/' + configFile)
-    
+    thisDesign = Design(projectDir + '/models/' + configFile)    
