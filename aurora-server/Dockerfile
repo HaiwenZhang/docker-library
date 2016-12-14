@@ -6,7 +6,7 @@ RUN mkdir -p /app/log && mkdir -p /app/tmp
 WORKDIR /app
 
 # Dependence
-RUN yum update && yum install -y wget gcc automake autoconf libtool make gcc-c++ gtk2 libXtst cmake bison libXaw && yum clean all
+RUN yum install -y wget gcc automake autoconf libtool make gcc-c++ gtk2 libXtst cmake bison libXaw && yum clean all
 
 # Oracle Java 1.8
 RUN \
