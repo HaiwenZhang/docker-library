@@ -14,7 +14,7 @@ RUN \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Project
-RUN mkdir -p /app/log && mkdir -p /app/tmp
+RUN mkdir -p /app/log/ && mkdir -p /app/tmp/ && mkdir -p /app/tmp/pids/
 WORKDIR /app
 
 # Bundle
