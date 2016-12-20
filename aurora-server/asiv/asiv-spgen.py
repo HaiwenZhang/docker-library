@@ -2,10 +2,13 @@
 ##### AGIV-SPGEN #####
 ######################
 
+# v0.41 (161205)
+# Compatible with Telechips parts. 
+
 # v0.4 (161124)
 # Change Usage: python3 spgen.py <path_to_interface_folder>. No more iterate of every folder in "Result".
 # Parse Enable (active high/low) from IBIS file and used in the deck.
-# Generate write deck
+# Generate write deck.
 
 # v0.31 (161117)
 # Parse IBIS for receiver model (support type: I/O, Input).
@@ -332,7 +335,7 @@ class Design:
                 for line in f:
                     if line.startswith('|') or line.strip()=='':
                         continue
-                    if line.lower().startswith('[component]') and IbisCompName.lower() in line.lower():
+                    if line.lower().startswith('[component]') and IbisCompName.lower() in line.lower() and not 'CLP' in line:
                         found_comp = 1
                         continue
                     if found_comp == 1:
@@ -349,7 +352,7 @@ class Design:
                                     #c_pkg = self.str2num(nextline.split()[1])    # ATT: This is the 'typ' case
                                     thisComp.c_pkg = nextline.split()[1]
                                 nextline = next(f)
-                            logging.debug('D011: Parsed package parasitics: %s  %s  %s'%(thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
+                            logging.debug('D021: Parsed package parasitics: %s  %s  %s'%(thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
                             if nextline.lower().startswith('[pin]'):
                                 nextline = next(f)
                                 while not ( nextline.startswith('[') ):
@@ -369,7 +372,6 @@ class Design:
                                 found_comp = 0
                     if line.lower().startswith('[model selector]'):
                         selector = line.split()[-1]
-                        logging.debug(selector)
                         nextline = next(f)
                         while not ( nextline.startswith('[') ):
                             if nextline.startswith('|') or nextline.strip()=='':
@@ -394,7 +396,9 @@ class Design:
                     if preline.lower().startswith('[model]'):
                         #logging.debug('break line:  ' + preline)
                         break    
-                logging.debug(thisIbis.ibis_selector2model.keys())
+                logging.debug('D022: All Model Selectors: %s' % (thisIbis.ibis_selector2model.keys()))
+                #print("############# pin to model selector ################")
+                #print(thisIbis.ibis_pin2selector)
             # Parse for Model Type
             with open(ibisFile, 'r') as f:
                 for line in f:
@@ -412,7 +416,9 @@ class Design:
                             nextline = next(f)
                         if not modelname in thisComp.compIbis.ibis_model2enable.keys():
                             thisComp.compIbis.ibis_model2enable[modelname] = '1'
-            #logging.debug(thisComp.compIbis.ibis_model2type)
+            for key in thisComp.compIbis.ibis_model2type:   # output the model type for all models.
+                #logging.debug('D023 - Model: %s. Type: %s.' % (key, thisComp.compIbis.ibis_model2type[key]))
+                pass
                     
 
     def findModel(self, thisInterface, compName, pinName):
@@ -430,15 +436,46 @@ class Design:
             return ''
         selectorName = thisComp.compIbis.ibis_pin2selector[pinName]
         if not (selectorName in thisComp.compIbis.ibis_selector2model.keys()):
-            print ('EM03: Cannot find model selector %s in IBIS model.' %(selectorName))
+            print ('EM03: Cannot find model selector %s in IBIS model for pin %s.' %(selectorName, pinName))
             return ''
         modelNameList = thisComp.compIbis.ibis_selector2model[selectorName]
         #logging.debug('D030: IBIS model list for pin %s is %s' %(pinName, modelNameList))
         logging.debug('D031: IBIS model selector for pin %s is %s' %(pinName, selectorName))
         
         # Determine model for Micron part
-        if thisComp.compManufacture == 'Micron':
-            # Parsor for Micron DDR IBIS Model
+        if thisComp.compManufacture == 'Micron' and self.interfaces[0].ddrType.lower() == 'ddr2':
+            # Parsor for Micron DDR2 IBIS Model            
+            # simulate with the DQ_FULL or DQ_HALF model for ALL Output simulations.  Use the ODT models ONLY for Input simulations.
+            DS = '_FULL'    # _FULL, _HALF
+            tx_model_candidate = []
+            tx_model = ''
+            for thisModel in modelNameList:
+                if thisInterface.dataRate in thisModel.split()[0] and DS in thisModel.split()[0] and 'ODT' not in thisModel.split()[0]:
+                    tx_model_candidate.append(thisModel.split()[0])
+            if len(tx_model_candidate)==0:
+                print('W01: Mircon Part: Cannot find coresponding datarate (%s) for pin %s in the IBIS model. Using generic model.'%(thisInterface.dataRate, pinName))
+                tx_model = modelNameList[0].split()[0]  # use the first model in the list
+            else:
+                tx_model = tx_model_candidate[0]
+            logging.debug('D032: Tx model for pin %s is %s. Model Type is %s.'%(pinName, tx_model, thisComp.compIbis.ibis_model2type[tx_model]))
+            
+            # Rx model: Use DQ_34_ODT*_* for ODT termination, otherwise use DQ_34_*, DQ_40_*
+            ODT = '_ODT50'  # _ODT50, _ODT75, _ODT150
+            rx_model_candidate = []
+            rx_model = ''
+            for thisModel in modelNameList:
+                if thisInterface.dataRate in thisModel.split()[0] and DS in thisModel.split()[0] and ODT in thisModel.split()[0]:
+                    rx_model_candidate.append(thisModel.split()[0])
+            if len(rx_model_candidate)==0:
+                print('W02: Mircon Part: Cannot find coresponding datarate (%s) for pin %s. Using generic model.'%(thisInterface.dataRate, pinName))
+                rx_model = modelNameList[0].split()[0]  # use the first model in the list
+            else:
+                rx_model = rx_model_candidate[0]
+            logging.debug('D033: Rx model for pin %s is %s. Model Type is %s.'%(pinName, rx_model, thisComp.compIbis.ibis_model2type[rx_model]))
+            return [tx_model, rx_model]
+            
+        if thisComp.compManufacture == 'Micron' and self.interfaces[0].ddrType.lower() == 'ddr3':
+            # Parsor for Micron DDR3 IBIS Model
             # Tx model: only use DQ_34_*, DQ_40_*
             DS = '_40'
             tx_model_candidate = []
@@ -452,7 +489,7 @@ class Design:
                 tx_model = modelNameList[0].split()[0]  # use the first model in the list
             else:
                 tx_model = tx_model_candidate[0]
-            logging.debug('D032: IBIS Tx model for pin %s is %s. Model Type is %s.'%(pinName, tx_model, thisComp.compIbis.ibis_model2type[tx_model]))
+            logging.debug('D032: Tx model for pin %s is %s. Model Type is %s.'%(pinName, tx_model, thisComp.compIbis.ibis_model2type[tx_model]))
             
             # Rx model: Use DQ_34_ODT*_* for ODT termination, otherwise use DQ_34_*, DQ_40_*
             ODT = '_ODT40'  # choose from: '', 'ODT40', 'ODT60', 'ODT120'
@@ -462,11 +499,11 @@ class Design:
                 if thisInterface.dataRate in thisModel.split()[0] and DS in thisModel.split()[0] and ODT in thisModel.split()[0]:
                     rx_model_candidate.append(thisModel.split()[0])
             if len(rx_model_candidate)==0:
-                print('W02: Mircon Part: Cannot find coresponding datarate (%s) for pin %s in the IBIS model. Using generic model.'%(thisInterface.dataRate, pinName))
+                print('W02: Mircon Part: Cannot find coresponding datarate (%s) for pin %s. Using generic model.'%(thisInterface.dataRate, pinName))
                 rx_model = modelNameList[0].split()[0]  # use the first model in the list
             else:
                 rx_model = rx_model_candidate[0]
-            logging.debug('D033: IBIS Rx model for pin %s is %s. Model Type is %s.'%(pinName, rx_model, thisComp.compIbis.ibis_model2type[rx_model]))
+            logging.debug('D033: Rx model for pin %s is %s. Model Type is %s.'%(pinName, rx_model, thisComp.compIbis.ibis_model2type[rx_model]))
             return [tx_model, rx_model]
         
         # Determine model for TI part
@@ -504,7 +541,47 @@ class Design:
             else:
                 rx_model = rx_model_candidate[0]
             logging.debug('D035: IBIS Rx model for pin %s is %s. Model Type is %s.'%(pinName, rx_model, thisComp.compIbis.ibis_model2type[rx_model]))        
-            return [tx_model, rx_model]         
+            return [tx_model, rx_model]
+
+        # Determine model for Telechips part
+        if thisComp.compManufacture.lower() == 'telechips':
+            #pbsstl_100 1X Driver
+            #pbsstl_101 2X Driver
+            #pbsstl_110 3X Driver
+            #pbsstl_111 4X Driver
+            #ODT120        ODT120_ZQ240
+            #ODT60         ODT60_ZQ240
+            #ODT40         ODT40_ZQ240
+            #ODT30         ODT30_ZQ240
+            # Tx model
+            DS = '_111'
+            tx_model_candidate = []
+            tx_model = ''
+            for thisModel in modelNameList:
+                if DS in thisModel.split()[0] and 'ODT' not in thisModel.split()[0]:
+                    tx_model_candidate.append(thisModel.split()[0])
+            if len(tx_model_candidate) == 0:
+                print('W05 - Telechips Part: Cannot find coresponding datarate (%s) for pin %s in the IBIS model. Using generic model.'%(thisInterface.dataRate, pinName))
+                tx_model = modelNameList[0].split()[0]  # use the first model in the list
+            else:
+                tx_model = tx_model_candidate[0]
+            logging.debug('D036: Tx model for pin %s is %s. Model Type is %s.'%(pinName, tx_model, thisComp.compIbis.ibis_model2type[tx_model]))
+            # Rx model
+            ODT = 'ODT40'  # choose from: '', 'ODT30', 'ODT40', 'ODT60', 'ODT120'
+            rx_model_candidate = []
+            rx_model = ''
+            for thisModel in modelNameList:
+                if ODT in thisModel.split()[0]:
+                    rx_model_candidate.append(thisModel.split()[0])
+            if len(rx_model_candidate)==0:
+                print('W06: Telechips Part: Cannot find coresponding datarate (%s) for pin %s. Using generic model.'%(thisInterface.dataRate, pinName))
+                rx_model = modelNameList[0].split()[0]  # use the first model in the list
+            else:
+                rx_model = rx_model_candidate[0]
+            print ('rx_model: ' + rx_model)
+            logging.debug('D037: Rx model for pin %s is %s. Model Type is %s.'%(pinName, rx_model, thisComp.compIbis.ibis_model2type[rx_model]))
+            return [tx_model, rx_model]
+        
         return ['', '']
 
     def generateByteDeck(self, deckType):
@@ -627,7 +704,7 @@ class Design:
                 deck.append("*********************************")
                 deck.append("******* DQ Rx subckt *******")
                 deck.append(".subckt rx_model_dq rx_pkg_in rx_dig_out rpin=100m lpin=1nH cpin=0.2pF")
-                print(thisByte.dq0.socModelRx)
+                logging.debug('The DQ Rx model for this byte is: %s, pin %s' % (thisByte.dq0.socModelRx, thisByte.dq0.socPin))
                 dq_model_type = thisComp.compIbis.ibis_model2type[thisByte.dq0.socModelRx]
                 if (dq_model_type.lower() == 'i/o'):
                     deck.append("v_en nd_en 0 %s" % (str(1-int(thisComp.compIbis.ibis_model2enable[thisByte.dq0.socModelRx]))))  # disabled                 
@@ -904,14 +981,15 @@ class Design:
             return ibisCompName
                 
     def parseIbisWhichComp(self, compNameList, thisComp):
-        if thisComp.compManufacture.lower() == 'micron':
-            for item in compNameList:
-                if thisComp.compPart in item or item in thisComp.compPart:
-                    logging.debug('D050: Found component match in IBIS file (Micron): %s'%(item))
-                    return item
         if thisComp.compManufacture.lower() == 'ti':
             logging.debug('D051: Found component match in IBIS file (TI): %s'%(compNameList[0]))
             return compNameList[0]
+        else:
+            for item in compNameList:
+                if thisComp.compPart in item or item in thisComp.compPart:
+                    logging.debug('D050: Found component match in IBIS file (Generic): %s'%(item))
+                    return item
+
 
     def str2num(self, s):
         try:
