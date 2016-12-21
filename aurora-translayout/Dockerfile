@@ -4,7 +4,7 @@ MAINTAINER PineWong <pinewong@163.com>
 # Node
 RUN \
   curl --silent --location https://rpm.nodesource.com/setup_6.x | bash - && \
-  yum -y install nodejs && \
+  yum -y install bzip2 nodejs && \
   yum clean all
 RUN mkdir -p /app/TransLayout/SVGToPNG/
 ADD ./package.json /app/TransLayout/SVGToPNG/
