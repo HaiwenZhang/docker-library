@@ -1,0 +1,28 @@
+{
+  "name": "svgtopng",
+  "version": "0.0.1",
+  "description": "convert the local html to png",
+  "main": "generateSVG_Jsdom",
+  "scripts": {
+    "start": "node generateSVG_Jsdom.js ./resource/case5  design.json svg1.svg png1.png"
+  },
+  "dependencies": {
+    "inherits": "~2.0.1",
+    "node-jsdom": "3.1.5",
+    "optimist":"~0.3.5",
+    "pn":"1.0.0",
+    "wordwrap":"~0.0.2",
+    "svg2png":"4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:CloudEDA/AuroraPlatform.git"
+  },
+  "author": "shuhui xie",
+  "license": "ISC",
+  "engines": {
+   "node": "6.9.2",
+   "npm" : "3.3.12"
+  },
+  "homepage": "https://github.com/CloudEDA/AuroraPlatform"
+}
