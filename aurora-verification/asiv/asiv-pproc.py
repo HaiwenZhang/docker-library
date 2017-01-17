@@ -78,6 +78,17 @@ class Pproc:
 	def readRaw(self, thisByte, rawfile):
 		with open(rawfile, 'r') as f:
 			flag = 0
+			thisByte.wfm_time = [];
+			thisByte.wfm_dq0 = [];
+			thisByte.wfm_dq1 = [];
+			thisByte.wfm_dq2 = [];
+			thisByte.wfm_dq3 = [];
+			thisByte.wfm_dq4 = [];
+			thisByte.wfm_dq5 = [];
+			thisByte.wfm_dq6 = [];
+			thisByte.wfm_dq7 = [];
+			thisByte.wfm_dqsp = [];
+			thisByte.wfm_dqsn = [];
 			for line in f:
 				if line.startswith('Values:'):
 					flag = 1

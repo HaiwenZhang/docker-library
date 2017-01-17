@@ -40,9 +40,3 @@ RUN mkdir -p /usr/share/fonts/wqy-microhei
 ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
 RUN fc-cache /usr/share/fonts/wqy-microhei
 
-# Python3 and MKL
-RUN \
-  yum install -y epel-release && yum install -y python34 && yum remove -y epel-release && yum clean all && \
-  ln -s /usr/bin/python3 /usr/local/bin/python3
-ADD mkl_so/* /usr/local/lib/
-ADD asiv/* /usr/local/bin/
