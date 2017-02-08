@@ -1,5 +1,5 @@
 FROM centos:7
-MAINTAINER PineWong <pinewong@163.com>
+MAINTAINER Aurora System <it@aurora-system.com>
 
 # Project
 RUN mkdir -p /app/log && mkdir -p /app/tmp
