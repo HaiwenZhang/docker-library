@@ -2,6 +2,10 @@
 ##### AGIV-SPGEN #####
 ######################
 
+# v0.42 (170207)
+# Handle the quotation marks ("") in component names from the interface file
+# Remove the @BOMpart keyword from component names to get the actual name
+
 # v0.41 (161205)
 # Compatible with Telechips parts. 
 
@@ -62,6 +66,7 @@ import logging
 import os.path
 import sys
 import re
+import shlex
 from collections import defaultdict
 
 class Design:
@@ -104,7 +109,8 @@ class Design:
                     line_comp = next(infile)    #skip the "Components {" line
                     while not '}' in line_comp:
                         if 'NameModel' in line_comp:
-                            thisInterface.comps.append(Component(line_comp.split()[1], line_comp.split()[2], line_comp.split()[3], line_comp.split()[4]))
+                            words = shlex.split(line_comp)
+                            thisInterface.comps.append(Component(words[1], words[2].replace("@BOMpart",""), words[3], words[4]))
                         line_comp = next(infile)
                         logging.debug (thisInterface.comps[-1].compID)
                         logging.debug (thisInterface.comps[-1].compPart)

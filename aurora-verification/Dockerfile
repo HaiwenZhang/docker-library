@@ -1,5 +1,5 @@
 FROM aurorasystem/server:latest
-MAINTAINER PineWong <pinewong@163.com>
+MAINTAINER Aurora System <it@aurora-system>
 
 # Python3 and MKL
 RUN \

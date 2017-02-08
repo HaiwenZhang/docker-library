@@ -2,11 +2,20 @@
 ##### ASIV-PPROC #####
 ######################
 
+# v0.3 (170115)
+# Refined calculation for EW, EH, and timing margins. 
+# Add an option to disable "adjust" by default
+# Plot 1 UI instead of 0.5 UI for eye diagram
+# Add Skew spec in "eye_parameter.txt" file
+#
+# Bug fixes:
+# 1. Data not initialized for rd and wt case
+# 2. Output trigger 
+
 # v0.2 (170101)
 # Fixed a bug for Yuxi's case
 # Fixed a bug that causes mis-aligned eye diagram
 # Add '--showplot' option
-
 
 # v0.1 (161215)
 # Read Aurora Raw output file
@@ -24,10 +33,11 @@ import logging
 import os.path
 import sys
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 class Pproc:
 	def __init__(self, projectDir, plotflag):
+		self.use_adjust = 0
 		self.plotflag = plotflag
 		self.interfaces = []
 		self.projectDir = projectDir
@@ -76,19 +86,19 @@ class Pproc:
 		logging.debug('Number of Byte is ' + str(thisInterface.numByte))
 		
 	def readRaw(self, thisByte, rawfile):
+		thisByte.wfm_time = []
+		thisByte.wfm_dq0 = []
+		thisByte.wfm_dq1 = []
+		thisByte.wfm_dq2 = []
+		thisByte.wfm_dq3 = []
+		thisByte.wfm_dq4 = []
+		thisByte.wfm_dq5 = []
+		thisByte.wfm_dq6 = []
+		thisByte.wfm_dq7 = []
+		thisByte.wfm_dqsp = []
+		thisByte.wfm_dqsn = []
 		with open(rawfile, 'r') as f:
 			flag = 0
-			thisByte.wfm_time = [];
-			thisByte.wfm_dq0 = [];
-			thisByte.wfm_dq1 = [];
-			thisByte.wfm_dq2 = [];
-			thisByte.wfm_dq3 = [];
-			thisByte.wfm_dq4 = [];
-			thisByte.wfm_dq5 = [];
-			thisByte.wfm_dq6 = [];
-			thisByte.wfm_dq7 = [];
-			thisByte.wfm_dqsp = [];
-			thisByte.wfm_dqsn = [];
 			for line in f:
 				if line.startswith('Values:'):
 					flag = 1
@@ -132,7 +142,7 @@ class Pproc:
 		for i in range(len(thisByte.wfm_dqsp)):
 			wfm_dqs.append(thisByte.wfm_dqsp[i] - thisByte.wfm_dqsn[i])
 		datarate = int(self.interfaces[0].dataRate) * 1e6
-		self.eyemask(self.interfaces[0], self.interfaces[0].ddrType, datarate)
+		self.geteyemask(self.interfaces[0], self.interfaces[0].ddrType, datarate)
 		vref = self.interfaces[0].vref
 		self.eye(thisByte.wfm_dq0, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ0')
 		self.eye(thisByte.wfm_dq1, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ1')
@@ -208,12 +218,13 @@ class Pproc:
 		# Trigger DQ using DQS zero-crossing points
 		eyedata = []	# 2D list to store eye diagram data, each list is a UI.
 		for trigger in dqs_crossings:
-			start = trigger - int((ui/2)/dt)
-			stop = trigger + int((ui/2)/dt)
+			start = trigger - int((ui)/dt)
+			stop = trigger + int((ui)/dt)
 			#print (start, stop)
 			if start < 0: start=0
 			if stop > len(t_intp)-1: stop = len(t_intp)-1
 			eyedata.append(dq[start:stop])
+			
 		# Find vref crossing (to determine jitter)
 		vref_crossing = []
 		xmax = 0
@@ -221,11 +232,14 @@ class Pproc:
 		for i in range(len(eyedata)):
 			tmp = self.edge(eyedata[i], vref, vref+0.1, vref-0.1)
 			if not tmp == []:
-				if tmp[0] > xmax: xmax = tmp[0]
-				if tmp[0] < xmin: xmin = tmp[0]
-			vref_crossing.append(tmp)
-		if xmin < 0.5*len(eyedata[0]):
-			xmin = xmin + len(eyedata[0])
+				for t in tmp:
+					if t > int(ui/dt) and t > xmax: 
+						xmax = t
+					if t > int(ui/dt) and t < xmin: 
+						xmin = t
+				vref_crossing.append(tmp)
+# 		if xmin < 0.5*len(eyedata[0]):
+# 			xmin = xmin + len(eyedata[0])
 		print('xmax, xmin: ', xmax, xmin)
 		jitter = (xmax - xmin) * dt
 		adjust = int(ui/dt) - xmax + int((xmax-xmin)/2)
@@ -234,22 +248,22 @@ class Pproc:
 		print('Jitter: %.4e'%(jitter))
 		print('left margin, right margin: ', left_margin, right_margin)
 		# Adjust eye data to the center of UI
+		if self.use_adjust == 0:
+			adjust = 0
 		eyedata = []
 		for trigger in dqs_crossings:
-			start = trigger - int((ui/2)/dt) - adjust
-			stop = trigger + int((ui/2)/dt) - adjust
+			start = trigger - int((ui)/dt) - adjust
+			stop = trigger + int((ui)/dt) - adjust
 			if start < 0: start=0
 			if stop > len(t_intp)-1: stop = len(t_intp)-1
 			eyedata.append(dq[start:stop])
 			if self.plotflag:
 				plt.plot(dq[start:stop], color='blue')
 		# find eye height, eye width
-		start = int(ui/dt/4)
-		stop = int(ui/dt/4*3)
 		min_high = 2*vref
 		max_low = 0.0
 		for eyedata_per_ui in eyedata:
-			temp = eyedata_per_ui[start:stop]
+			temp = eyedata_per_ui[int(eyemask[1][0]/dt):int(eyemask[2][0]/dt)]
 			for data in temp:
 				if data >= vref:
 					if data < min_high:	min_high = data
@@ -279,9 +293,12 @@ class Pproc:
 		f1.write('Adjust: %.6e\n' % (adjust*dt))
 		f1.write('Trigger: \n')
 		for trigger in dqs_crossings:
-			 f1.write('%.6e\n' % ((trigger-adjust)*dt))
+			 f1.write('%.6e\n' % ((trigger)*dt))
 		f1.close()
 		f2 = open(path+'/eye_parameter.txt', 'w')
+		f2.write('ui: %.6e\n' % (ui))
+		f2.write('minimun HIGH: %.6e\n' % (min_high))
+		f2.write('maximum LOW: %.6e\n' % (max_low))
 		f2.write('eye height: %.6e\n' % (eyeheight))
 		f2.write('eye width: %.6e\n' % (eyewidth))
 		f2.write('jitter: %.6e\n' % (jitter))
@@ -292,10 +309,10 @@ class Pproc:
 		f2.write('eye mask: \n')
 		for i in range(6):
 			f2.write('%.6e\t%.6e\n' % (eyemask[i][0], eyemask[i][1]))
-		f2.close()
-		
+		f2.write('skew spec DQ-DQS routing: %.6e\n' % (self.interfaces[0].skew_dq_dqs))
+		f2.close()				
 
-	def eyemask(self, thisInterface, ddrtype, datarate):
+	def geteyemask(self, thisInterface, ddrtype, datarate):
 		# set vref
 		if ddrtype.lower() == 'ddr3':
 			thisInterface.vref = 0.75
@@ -322,13 +339,15 @@ class Pproc:
 			else:
 				print('Error: Cannot define eye mask.')
 		ui = 1/datarate
-		thisInterface.eyemask.append([ui/2-tds-0.1*ui, thisInterface.vref])
-		thisInterface.eyemask.append([ui/2-tds, vih])
-		thisInterface.eyemask.append([ui/2+tdh, vih])
-		thisInterface.eyemask.append([ui/2+tdh+0.1*ui, thisInterface.vref])
-		thisInterface.eyemask.append([ui/2+tdh, vil])
-		thisInterface.eyemask.append([ui/2-tds, vil])
-		thisInterface.eyemask.append([ui/2-tds-0.1*ui, thisInterface.vref])
+		thisInterface.eyemask.append([ui-tds-0.1*ui, thisInterface.vref])
+		thisInterface.eyemask.append([ui-tds, vih])
+		thisInterface.eyemask.append([ui+tdh, vih])
+		thisInterface.eyemask.append([ui+tdh+0.1*ui, thisInterface.vref])
+		thisInterface.eyemask.append([ui+tdh, vil])
+		thisInterface.eyemask.append([ui-tds, vil])
+		thisInterface.eyemask.append([ui-tds-0.1*ui, thisInterface.vref])	
+		# set DQ-DQS skew (allocation 2% of UI for routing error)
+		thisInterface.skew_dq_dqs = ui * 0.02
 
 	def edge(self, data, mid, high, low):
 		# Find Edges
@@ -352,7 +371,7 @@ class Pproc:
 				if cross == gthigh[a] or cross == gtlow[a]:
 					cross = False
 		return var1
-				
+		
 class DDR:
 	def __init__ (self, id):
 		self.interfaceID = id
@@ -364,6 +383,7 @@ class DDR:
 		self.numByte = 0
 		self.eyemask = []
 		self.vref = 0.0
+		self.skew_dq_dqs = 0
 
 class Byte:
     def __init__ (self, id):
@@ -379,17 +399,9 @@ class Byte:
         self.wfm_dq7 = []
         self.wfm_dqsp = []
         self.wfm_dqsn = []
-                
-        self.dq0 = Signal('dq0')
-        self.dq1 = Signal('dq1')
-        self.dq2 = Signal('dq2')
-        self.dq3 = Signal('dq3')
-        self.dq4 = Signal('dq4')
-        self.dq5 = Signal('dq5')
-        self.dq6 = Signal('dq6')
-        self.dq7 = Signal('dq7')
-        self.dqs_p = Signal('dqs_p')
-        self.dqs_n = Signal('dqs_n')
+        self.wfm_alldq_time = []
+        self.wfm_alldq_dq = []
+        self.wfm_alldq_dqs = []
         
 class Signal:
     def __init__ (self, id):
