@@ -1,4 +1,4 @@
-FROM ruby:2.3.1
+FROM ruby:2.3
 MAINTAINER Aurora <it@aurora-system.com>
 
 # see update.sh for why all "apt-get install"s have to stay as one long line
@@ -19,5 +19,4 @@ WORKDIR /app
 
 # Bundle
 ADD ./Gemfile Gemfile
-ADD ./Gemfile.lock Gemfile.lock
 RUN bundle install
