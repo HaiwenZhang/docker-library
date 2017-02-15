@@ -2,6 +2,9 @@
 ##### AGIV-SPGEN #####
 ######################
 
+# v0.5 (170120)
+# Parse Xilinx IBIS model
+
 # v0.42 (170207)
 # Handle the quotation marks ("") in component names from the interface file
 # Remove the @BOMpart keyword from component names to get the actual name
@@ -75,7 +78,9 @@ class Design:
         self.configFile = file
         self.readConfig(self.configFile)
         self.generateByteDeck('rd')
+        logging.debug('Read deck generated sucessfully.')
         self.generateByteDeck('wt')
+        logging.debug('Write deck generated sucessfully.')
     
     def readConfig(self, file):
         self.modelPath = os.path.dirname(file)
@@ -88,7 +93,6 @@ class Design:
 
                 # Parse for ID, Type, Component information
                 line_ID = next(infile)
-                logging.debug ('Component ID is ' + line_ID)
                 if not 'ID' in line_ID:
                     print ('E001: Cannot find DDR ID')
                 else:
@@ -100,8 +104,10 @@ class Design:
                     print ('E002: Cannot find DDR Type')
                 else:
                     thisInterface.ddrType = line_type.split()[1]
-                    thisInterface.dataRate = str(int(line_type.split()[2][:-3])*2)
-                logging.debug ('Interface data rate is ' + thisInterface.dataRate)
+                    clkfreq = (line_type.split()[2][:-3]).split('.')[0]
+                    print(clkfreq)
+                    thisInterface.dataRate = self.getDatarate(clkfreq)
+                    logging.debug ('Interface data rate is ' + thisInterface.dataRate)
                 line_comp = next(infile)
                 if not 'Components {' in line_comp:
                     print ('E003: Cannot find DDR Components')
@@ -111,6 +117,10 @@ class Design:
                         if 'NameModel' in line_comp:
                             words = shlex.split(line_comp)
                             thisInterface.comps.append(Component(words[1], words[2].replace("@BOMpart",""), words[3], words[4]))
+                            if len(line_comp.split()) > 5:
+                                if line_comp.split()[5] == 'DIMM':
+                                    thisInterface.comps[-1].isDIMM = 1
+                                    print('%s is DIMM.' % (thisInterface.comps[-1].compID))
                         line_comp = next(infile)
                         logging.debug (thisInterface.comps[-1].compID)
                         logging.debug (thisInterface.comps[-1].compPart)
@@ -118,8 +128,9 @@ class Design:
                         logging.debug (thisInterface.comps[-1].compManufacture)
                 nextline = next(infile)
                 
-                # Process IBIS file for model_selector <-> model name mapping
+                # Process IBIS file for model_selector <-> model name mapping 
                 self.parseIbis(thisInterface)
+                print('Finish parsing IBIS file.')
                 #logging.debug(thisInterface.comps[1].compIbis.ibis_selector2model['DM'])
 
                 # Parse for Byte
@@ -214,7 +225,16 @@ class Design:
                             txmodel, rxmodel = self.findModel(thisInterface, thisByte.ddrComp, thisByte.dqs_p.ddrPin); thisByte.dqs_p.ddrModelTx.append(txmodel); thisByte.dqs_p.ddrModelRx.append(rxmodel); 
                             txmodel, rxmodel = self.findModel(thisInterface, thisByte.ddrComp, thisByte.dqs_n.ddrPin); thisByte.dqs_n.ddrModelTx.append(txmodel); thisByte.dqs_n.ddrModelRx.append(rxmodel); 
                             logging.debug (thisByte.dqs_p.ddrModelRx)
-                        nextline = next(infile) # Skip the '}' line
+                        nextline = next(infile)
+                        if not 'Net_DQ' in nextline:
+                            print ('E015_3: Error in reading DDR Net_DQ')
+                        else:
+                            nextline = next(infile)
+                        if not 'Net_DQS' in nextline:
+                            print ('E015_3: Error in reading DDR Net_DQS')
+                        else:
+                            nextline = next(infile)
+                        #nextline = next(infile) # Skip the '}' line
                         nextline = next(infile)
                     logging.debug('Num of Byte: ' + str(thisInterface.numByte))
 
@@ -332,6 +352,19 @@ class Design:
             # Determine number of component in the ibis file
             IbisCompNameList = self.parseIbisCompNum(ibisFile)
             logging.debug('In IBIS file %s, the total number of component is %s.' %(thisInterface.comps[i].compModelFile, len(IbisCompNameList)))
+            # Parse for Model Type
+            self.parseIbisModelType(thisComp, ibisFile)
+            
+            # Special treatment for DIMM parts
+            if thisComp.isDIMM == 1:
+                print('This is a DIMM part. Do not parse IBIS.')
+                continue
+            
+            # Special treatment for Xilinx parts
+            if thisComp.compManufacture.lower() == 'xilinx':
+                print('This is a Xilinx part. Do not parse IBIS.')
+                continue
+            
             # Determine the component to use
             IbisCompName = self.parseIbisWhichComp(IbisCompNameList, thisComp)
             # Parse for ibis model
@@ -405,26 +438,28 @@ class Design:
                 logging.debug('D022: All Model Selectors: %s' % (thisIbis.ibis_selector2model.keys()))
                 #print("############# pin to model selector ################")
                 #print(thisIbis.ibis_pin2selector)
-            # Parse for Model Type
-            with open(ibisFile, 'r') as f:
-                for line in f:
-                    if '[model]' in line.lower():
-                        modelname = line.split()[-1]
+            
+    def parseIbisModelType (self, thisComp, ibisFile):
+        # Parse for Model Type
+        with open(ibisFile, 'r') as f:
+            for line in f:
+                if line.lower().startswith('[model]'):
+                    modelname = line.split()[-1]
+                    nextline = next(f)
+                    while not nextline.startswith('['):
+                        if 'model_type' in nextline.lower():
+                            thisComp.compIbis.ibis_model2type[modelname] = nextline.split()[-1]
+                        if 'enable' in nextline.lower():
+                                if 'low' in nextline.lower():
+                                    thisComp.compIbis.ibis_model2enable[modelname] = '0'
+                                else:
+                                    thisComp.compIbis.ibis_model2enable[modelname] = '1'
                         nextline = next(f)
-                        while not nextline.startswith('['):
-                            if 'model_type' in nextline.lower():
-                                thisComp.compIbis.ibis_model2type[modelname] = nextline.split()[-1]
-                            if 'enable' in nextline.lower():
-                                    if 'low' in nextline.lower():
-                                        thisComp.compIbis.ibis_model2enable[modelname] = '0'
-                                    else:
-                                        thisComp.compIbis.ibis_model2enable[modelname] = '1'
-                            nextline = next(f)
-                        if not modelname in thisComp.compIbis.ibis_model2enable.keys():
-                            thisComp.compIbis.ibis_model2enable[modelname] = '1'
-            for key in thisComp.compIbis.ibis_model2type:   # output the model type for all models.
-                #logging.debug('D023 - Model: %s. Type: %s.' % (key, thisComp.compIbis.ibis_model2type[key]))
-                pass
+                    if not modelname in thisComp.compIbis.ibis_model2enable.keys():
+                        thisComp.compIbis.ibis_model2enable[modelname] = '1'
+        for key in thisComp.compIbis.ibis_model2type:   # output the model type for all models.
+            #logging.debug('D023 - Model: %s. Type: %s.' % (key, thisComp.compIbis.ibis_model2type[key]))
+            pass
                     
 
     def findModel(self, thisInterface, compName, pinName):
@@ -436,7 +471,29 @@ class Design:
                 break
         if found_comp == 0:
             print ('EM01: Cannot find component: %s'%(compName))
-            return ''
+            return '' 
+        
+        # For Xilinx part
+        if thisComp.compManufacture.lower() == 'xilinx':
+            if self.interfaces[0].ddrType.lower() == 'ddr2':
+                return ['SSTL18_II_F_HR', 'SSTL18_II_F_HR']
+            if self.interfaces[0].ddrType.lower() == 'ddr3':
+                return ['SSTL15_F_HR', 'SSTL15_F_HR']
+        
+        # For DIMM part
+        # DQ_DRV_34           DQ DRV Ron 34ohm ( ODT OFF )
+        # DQ_DRV_40           DQ DRV Ron 40ohm ( ODT OFF )
+        # DIN_ODT_OFF         DQ ODT OFF ( Driver/ODT OFF )
+        # DIN_ODT_120         DQ ODT 120ohm ( Driver OFF )
+        # DIN_ODT_60          DQ ODT 60ohm  ( Driver OFF )
+        # DIN_ODT_40          DQ ODT 40ohm  ( Driver OFF )
+        # DIN_ODT_30          DQ ODT 30ohm  ( Driver OFF )
+        # DIN_ODT_20          DQ ODT 20ohm  ( Driver OFF )        
+        if thisComp.isDIMM == 1:
+            if thisComp.compManufacture.lower() == 'hynix':
+                return ['DQ_DRV_34', 'DIN_ODT_40']
+            
+        # For non-Xilinx, non-DIMM part
         if not (pinName in thisComp.compIbis.ibis_pin2selector.keys() ):
             print ('EM02: Cannot find pin %s in IBIS model.' %(pinName))
             return ''
@@ -597,10 +654,10 @@ class Design:
         thisInterface = self.interfaces[0]
         for i in range(len(self.interfaces[0].byte)):
             thisByte = self.interfaces[0].byte[i]
-            deckfile = self.modelPath + '/../decks/' + 'byte' + str(i) + '_' + deckType + '.sp'
+            deckfile = self.modelPath + '/../decks/' + 'byte' + thisByte.byteID + '_' + deckType + '.sp'
             deck = []   # the content of deck
             # header
-            deck.append("* Deck for Byte%s %s\n"%(str(i), deckType.upper()))
+            deck.append("* Deck for Byte%s %s\n"%(thisByte.byteID , deckType.upper()))
             deck.append(".options post probe")
             deck.append("* .options method=gear dcon=1 converge=1")
             deck.append(".tran 10p 100n")
@@ -671,14 +728,24 @@ class Design:
                 deck.append("x_ddr_pkg nd_pin_out nd_pkg_out ddr_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xtx_dq0 dq0_ddr_bga dq0_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.ddrPin]))
-                deck.append("xtx_dq1 dq1_ddr_bga dq1_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.ddrPin]))
-                deck.append("xtx_dq2 dq2_ddr_bga dq2_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.ddrPin]))
-                deck.append("xtx_dq3 dq3_ddr_bga dq3_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.ddrPin]))
-                deck.append("xtx_dq4 dq4_ddr_bga dq4_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.ddrPin]))
-                deck.append("xtx_dq5 dq5_ddr_bga dq5_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.ddrPin]))
-                deck.append("xtx_dq6 dq6_ddr_bga dq6_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.ddrPin]))
-                deck.append("xtx_dq7 dq7_ddr_bga dq7_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.ddrPin]))
+                if thisByte.dq0.ddrPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin] == '':
+                    deck.append("xtx_dq0 dq0_ddr_bga dq0_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.ddrPin]))
+                    deck.append("xtx_dq1 dq1_ddr_bga dq1_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.ddrPin]))
+                    deck.append("xtx_dq2 dq2_ddr_bga dq2_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.ddrPin]))
+                    deck.append("xtx_dq3 dq3_ddr_bga dq3_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.ddrPin]))
+                    deck.append("xtx_dq4 dq4_ddr_bga dq4_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.ddrPin]))
+                    deck.append("xtx_dq5 dq5_ddr_bga dq5_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.ddrPin]))
+                    deck.append("xtx_dq6 dq6_ddr_bga dq6_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.ddrPin]))
+                    deck.append("xtx_dq7 dq7_ddr_bga dq7_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.ddrPin]))
+                else:
+                    deck.append("xtx_dq0 dq0_ddr_bga dq0_in tx_model_dq")
+                    deck.append("xtx_dq1 dq1_ddr_bga dq1_in tx_model_dq")
+                    deck.append("xtx_dq2 dq2_ddr_bga dq2_in tx_model_dq")
+                    deck.append("xtx_dq3 dq3_ddr_bga dq3_in tx_model_dq")
+                    deck.append("xtx_dq4 dq4_ddr_bga dq4_in tx_model_dq")
+                    deck.append("xtx_dq5 dq5_ddr_bga dq5_in tx_model_dq")
+                    deck.append("xtx_dq6 dq6_ddr_bga dq6_in tx_model_dq")
+                    deck.append("xtx_dq7 dq7_ddr_bga dq7_in tx_model_dq")
                 deck.append("\n******* DQS subckt *******")
                 deck.append(".subckt tx_model_dqs nd_pkg_out nd_in rpin=100m lpin=1nH cpin=0.2pF")
                 dqs_model_type = thisComp.compIbis.ibis_model2type[thisByte.dqs_p.ddrModelTx[0]]
@@ -699,8 +766,12 @@ class Design:
                 deck.append("x_ddr_pkg nd_pin_out nd_pkg_out ddr_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xtx_dqsp dqs_p_ddr_bga dqs_p_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.ddrPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.ddrPin]))
-                deck.append("xtx_dqsn dqs_n_ddr_bga dqs_n_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.ddrPin]))
+                if thisByte.dqs_p.ddrPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin] == '':
+                    deck.append("xtx_dqsp dqs_p_ddr_bga dqs_p_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.ddrPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.ddrPin]))
+                    deck.append("xtx_dqsn dqs_n_ddr_bga dqs_n_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.ddrPin]))
+                else:
+                    deck.append("xtx_dqsp dqs_p_ddr_bga dqs_p_in tx_model_dqs")
+                    deck.append("xtx_dqsn dqs_n_ddr_bga dqs_n_in tx_model_dqs")
                 deck.append("")
                 
                 # SoC model: Rx
@@ -710,7 +781,7 @@ class Design:
                 deck.append("*********************************")
                 deck.append("******* DQ Rx subckt *******")
                 deck.append(".subckt rx_model_dq rx_pkg_in rx_dig_out rpin=100m lpin=1nH cpin=0.2pF")
-                logging.debug('The DQ Rx model for this byte is: %s, pin %s' % (thisByte.dq0.socModelRx, thisByte.dq0.socPin))
+                #logging.debug('The DQ Rx model for this byte is: %s, pin %s' % (thisByte.dq0.socModelRx, thisByte.dq0.socPin))
                 dq_model_type = thisComp.compIbis.ibis_model2type[thisByte.dq0.socModelRx]
                 if (dq_model_type.lower() == 'i/o'):
                     deck.append("v_en nd_en 0 %s" % (str(1-int(thisComp.compIbis.ibis_model2enable[thisByte.dq0.socModelRx]))))  # disabled                 
@@ -738,15 +809,25 @@ class Design:
                 #deck.append("C_pin rx_pad 0 1.8pF")
                 #deck.append(".ends")
                 #deck.append("")
-                deck.append("xrx_dq0 dq0_soc_bga dq0_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.socPin]))
-                deck.append("xrx_dq1 dq1_soc_bga dq1_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.socPin]))
-                deck.append("xrx_dq2 dq2_soc_bga dq2_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.socPin]))
-                deck.append("xrx_dq3 dq3_soc_bga dq3_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.socPin]))
-                deck.append("xrx_dq4 dq4_soc_bga dq4_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.socPin]))
-                deck.append("xrx_dq5 dq5_soc_bga dq5_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.socPin]))
-                deck.append("xrx_dq6 dq6_soc_bga dq6_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.socPin]))
-                deck.append("xrx_dq7 dq7_soc_bga dq7_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.socPin]))
-                
+                if thisByte.dq0.socPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin] == '':
+                    deck.append("xrx_dq0 dq0_soc_bga dq0_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.socPin]))
+                    deck.append("xrx_dq1 dq1_soc_bga dq1_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.socPin]))
+                    deck.append("xrx_dq2 dq2_soc_bga dq2_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.socPin]))
+                    deck.append("xrx_dq3 dq3_soc_bga dq3_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.socPin]))
+                    deck.append("xrx_dq4 dq4_soc_bga dq4_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.socPin]))
+                    deck.append("xrx_dq5 dq5_soc_bga dq5_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.socPin]))
+                    deck.append("xrx_dq6 dq6_soc_bga dq6_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.socPin]))
+                    deck.append("xrx_dq7 dq7_soc_bga dq7_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.socPin]))
+                else:
+                    deck.append("xrx_dq0 dq0_soc_bga dq0_dig_out rx_model_dq")
+                    deck.append("xrx_dq1 dq1_soc_bga dq1_dig_out rx_model_dq")
+                    deck.append("xrx_dq2 dq2_soc_bga dq2_dig_out rx_model_dq")
+                    deck.append("xrx_dq3 dq3_soc_bga dq3_dig_out rx_model_dq")
+                    deck.append("xrx_dq4 dq4_soc_bga dq4_dig_out rx_model_dq")
+                    deck.append("xrx_dq5 dq5_soc_bga dq5_dig_out rx_model_dq")
+                    deck.append("xrx_dq6 dq6_soc_bga dq6_dig_out rx_model_dq")
+                    deck.append("xrx_dq7 dq7_soc_bga dq7_dig_out rx_model_dq")
+                    
                 deck.append("\n******* DQS Rx subckt *******")
                 deck.append(".subckt rx_model_dqs rx_pkg_in rx_dig_out rpin=100m lpin=1nH cpin=0.2pF")
                 dqs_model_type = thisComp.compIbis.ibis_model2type[thisByte.dqs_p.socModelRx]
@@ -768,8 +849,12 @@ class Design:
                 deck.append("x_soc_pkg rx_pad rx_pkg_in soc_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xrx_dqsp dqs_p_soc_bga dqs_p_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.socPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.socPin]))
-                deck.append("xrx_dqsn dqs_n_soc_bga dqs_n_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.socPin]))
+                if thisByte.dqs_p.socPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin] == '':
+                    deck.append("xrx_dqsp dqs_p_soc_bga dqs_p_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.socPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.socPin]))
+                    deck.append("xrx_dqsn dqs_n_soc_bga dqs_n_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.socPin]))
+                else:
+                    deck.append("xrx_dqsp dqs_p_soc_bga dqs_p_dig_out rx_model_dqs")
+                    deck.append("xrx_dqsn dqs_n_soc_bga dqs_n_dig_out rx_model_dqs")
                 deck.append("")
                 
             
@@ -800,15 +885,24 @@ class Design:
                 deck.append("x_soc_pkg nd_pin_out nd_pkg_out soc_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xtx_dq0 dq0_soc_bga dq0_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.socPin]))
-                deck.append("xtx_dq1 dq1_soc_bga dq1_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.socPin]))
-                deck.append("xtx_dq2 dq2_soc_bga dq2_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.socPin]))
-                deck.append("xtx_dq3 dq3_soc_bga dq3_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.socPin]))
-                deck.append("xtx_dq4 dq4_soc_bga dq4_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.socPin]))
-                deck.append("xtx_dq5 dq5_soc_bga dq5_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.socPin]))
-                deck.append("xtx_dq6 dq6_soc_bga dq6_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.socPin]))
-                deck.append("xtx_dq7 dq7_soc_bga dq7_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.socPin]))
-                
+                if thisByte.dq0.socPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin] == '':
+                    deck.append("xtx_dq0 dq0_soc_bga dq0_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.socPin]))
+                    deck.append("xtx_dq1 dq1_soc_bga dq1_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.socPin]))
+                    deck.append("xtx_dq2 dq2_soc_bga dq2_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.socPin]))
+                    deck.append("xtx_dq3 dq3_soc_bga dq3_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.socPin]))
+                    deck.append("xtx_dq4 dq4_soc_bga dq4_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.socPin]))
+                    deck.append("xtx_dq5 dq5_soc_bga dq5_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.socPin]))
+                    deck.append("xtx_dq6 dq6_soc_bga dq6_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.socPin]))
+                    deck.append("xtx_dq7 dq7_soc_bga dq7_in tx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.socPin]))
+                else:
+                    deck.append("xtx_dq0 dq0_soc_bga dq0_in tx_model_dq")
+                    deck.append("xtx_dq1 dq1_soc_bga dq1_in tx_model_dq")
+                    deck.append("xtx_dq2 dq2_soc_bga dq2_in tx_model_dq")
+                    deck.append("xtx_dq3 dq3_soc_bga dq3_in tx_model_dq")
+                    deck.append("xtx_dq4 dq4_soc_bga dq4_in tx_model_dq")
+                    deck.append("xtx_dq5 dq5_soc_bga dq5_in tx_model_dq")
+                    deck.append("xtx_dq6 dq6_soc_bga dq6_in tx_model_dq")
+                    deck.append("xtx_dq7 dq7_soc_bga dq7_in tx_model_dq")                                  
                 deck.append("\n* DQS subckt")
                 deck.append(".subckt tx_model_dqs nd_pkg_out nd_in rpin=100m lpin=1nH cpin=0.2pF")
                 dqs_model_type = thisComp.compIbis.ibis_model2type[thisByte.dqs_p.socModelTx]
@@ -829,8 +923,12 @@ class Design:
                 deck.append("x_soc_pkg nd_pin_out nd_pkg_out soc_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xtx_dqsp dqs_p_soc_bga dqs_p_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.socPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.socPin]))
-                deck.append("xtx_dqsn dqs_n_soc_bga dqs_n_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.socPin]))
+                if thisByte.dqs_p.socPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin] == '':
+                    deck.append("xtx_dqsp dqs_p_soc_bga dqs_p_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.socPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.socPin]))
+                    deck.append("xtx_dqsn dqs_n_soc_bga dqs_n_in tx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.socPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.socPin]))
+                else:
+                    deck.append("xtx_dqsp dqs_p_soc_bga dqs_p_in tx_model_dqs")
+                    deck.append("xtx_dqsn dqs_n_soc_bga dqs_n_in tx_model_dqs")                 
                 deck.append("")
                 
                 # DDR model: Rx
@@ -840,7 +938,6 @@ class Design:
                 deck.append("*********************************")
                 deck.append("* DQ Rx subckt")
                 deck.append(".subckt rx_model_dq rx_pkg_in rx_dig_out rpin=100m lpin=1nH cpin=0.2pF")
-                print(thisByte.dq0.ddrModelRx[0])
                 dq_model_type = thisComp.compIbis.ibis_model2type[thisByte.dq0.ddrModelRx[0]]
                 if (dq_model_type.lower() == 'i/o'):
                     deck.append("v_en nd_en 0 %s" % (str(1-int(thisComp.compIbis.ibis_model2enable[thisByte.dq0.ddrModelRx[0]]))))                    
@@ -868,15 +965,24 @@ class Design:
                 #deck.append("C_pin rx_pad 0 1.8pF")
                 #deck.append(".ends")
                 #deck.append("")
-                deck.append("xrx_dq0 dq0_ddr_bga dq0_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.ddrPin]))
-                deck.append("xrx_dq1 dq1_ddr_bga dq1_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.ddrPin]))
-                deck.append("xrx_dq2 dq2_ddr_bga dq2_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.ddrPin]))
-                deck.append("xrx_dq3 dq3_ddr_bga dq3_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.ddrPin]))
-                deck.append("xrx_dq4 dq4_ddr_bga dq4_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.ddrPin]))
-                deck.append("xrx_dq5 dq5_ddr_bga dq5_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.ddrPin]))
-                deck.append("xrx_dq6 dq6_ddr_bga dq6_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.ddrPin]))
-                deck.append("xrx_dq7 dq7_ddr_bga dq7_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.ddrPin]))
-                
+                if thisByte.dq0.ddrPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin] == '':
+                    deck.append("xrx_dq0 dq0_ddr_bga dq0_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq0.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq0.ddrPin]))
+                    deck.append("xrx_dq1 dq1_ddr_bga dq1_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq1.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq1.ddrPin]))
+                    deck.append("xrx_dq2 dq2_ddr_bga dq2_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq2.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq2.ddrPin]))
+                    deck.append("xrx_dq3 dq3_ddr_bga dq3_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq3.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq3.ddrPin]))
+                    deck.append("xrx_dq4 dq4_ddr_bga dq4_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq4.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq4.ddrPin]))
+                    deck.append("xrx_dq5 dq5_ddr_bga dq5_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq5.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq5.ddrPin]))
+                    deck.append("xrx_dq6 dq6_ddr_bga dq6_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq6.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq6.ddrPin]))
+                    deck.append("xrx_dq7 dq7_ddr_bga dq7_dig_out rx_model_dq rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dq7.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dq7.ddrPin]))
+                else:
+                    deck.append("xrx_dq0 dq0_ddr_bga dq0_dig_out rx_model_dq")
+                    deck.append("xrx_dq1 dq1_ddr_bga dq1_dig_out rx_model_dq")
+                    deck.append("xrx_dq2 dq2_ddr_bga dq2_dig_out rx_model_dq")
+                    deck.append("xrx_dq3 dq3_ddr_bga dq3_dig_out rx_model_dq")
+                    deck.append("xrx_dq4 dq4_ddr_bga dq4_dig_out rx_model_dq")
+                    deck.append("xrx_dq5 dq5_ddr_bga dq5_dig_out rx_model_dq")
+                    deck.append("xrx_dq6 dq6_ddr_bga dq6_dig_out rx_model_dq")
+                    deck.append("xrx_dq7 dq7_ddr_bga dq7_dig_out rx_model_dq")                                  
                 deck.append("\n* DQS Rx subckt")
                 deck.append(".subckt rx_model_dqs rx_pkg_in rx_dig_out rpin=100m lpin=1nH cpin=0.2pF")
                 dqs_model_type = thisComp.compIbis.ibis_model2type[thisByte.dqs_p.ddrModelRx[0]]
@@ -898,8 +1004,12 @@ class Design:
                 deck.append("x_ddr_pkg rx_pad rx_pkg_in ddr_pkg")
                 deck.append(".ends")
                 deck.append("")
-                deck.append("xrx_dqsp dqs_p_ddr_bga dqs_p_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.ddrPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.ddrPin]))
-                deck.append("xrx_dqsn dqs_n_ddr_bga dqs_n_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.ddrPin]))
+                if thisByte.dqs_p.ddrPin in thisComp.compIbis.ibis_pin2rpin.keys() and not thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin] == '':
+                    deck.append("xrx_dqsp dqs_p_ddr_bga dqs_p_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_p.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_p.ddrPin],thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_p.ddrPin]))
+                    deck.append("xrx_dqsn dqs_n_ddr_bga dqs_n_dig_out rx_model_dqs rpin=%s lpin=%s cpin=%s" %(thisComp.compIbis.ibis_pin2rpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2lpin[thisByte.dqs_n.ddrPin], thisComp.compIbis.ibis_pin2cpin[thisByte.dqs_n.ddrPin]))
+                else:
+                    deck.append("xrx_dqsp dqs_p_ddr_bga dqs_p_dig_out rx_model_dqs")
+                    deck.append("xrx_dqsn dqs_n_ddr_bga dqs_n_dig_out rx_model_dqs")
                 deck.append("")
                 
             
@@ -909,7 +1019,10 @@ class Design:
             # SoC package model
             thisComp = self.getComp(thisInterface, thisByte.socComp)
             deck.append("* SoC Package Model")
-            deck.append(".subckt soc_pkg pad pkg_out r2=%s l2=%s c2=%s" % (thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
+            if not thisComp.r_pkg == '':
+                deck.append(".subckt soc_pkg pad pkg_out r2=%s l2=%s c2=%s" % (thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
+            else:
+                deck.append(".subckt soc_pkg pad pkg_out r2=100m l2=1.5n c2=0.5p")
             deck.append("R_pkg pad net1 r2")
             deck.append("L_pkg net1 pkg_out l2")
             deck.append("C_pkg pkg_out 0 c2")
@@ -919,7 +1032,10 @@ class Design:
             # DDR package model
             thisComp = self.getComp(thisInterface, thisByte.ddrComp)
             deck.append("* DDR Package Model")
-            deck.append(".subckt ddr_pkg pad pkg_out r1=%s l1=%s c1=%s" % (thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
+            if not thisComp.r_pkg == '':
+                deck.append(".subckt ddr_pkg pad pkg_out r1=%s l1=%s c1=%s" % (thisComp.r_pkg, thisComp.l_pkg, thisComp.c_pkg))
+            else:
+                deck.append(".subckt ddr_pkg pad pkg_out r1=100m l1=1.5nH c1=0.5pF")
             deck.append("R_pkg pad net1 r1")
             deck.append("L_pkg net1 pkg_out l1")
             deck.append("C_pkg pkg_out 0 c1")
@@ -939,7 +1055,7 @@ class Design:
             deck.append("*********************************")
             deck.append("******** Channel Model **********")
             deck.append("*********************************")
-            bytemodelfile = '%s/BYTE%s.sp' %(self.modelPath, str(i))
+            bytemodelfile = '%s/BYTE%s.sp' %(self.modelPath,  thisByte.byteID )
             if not os.path.isfile(bytemodelfile):
                 print('EG02: Cannot find Byte model file.')
                 raise SystemExit
@@ -947,7 +1063,7 @@ class Design:
             deck.append("x_channel")
             deck.append("+ dq0_ddr_bga dq1_ddr_bga dq2_ddr_bga dq3_ddr_bga dq4_ddr_bga dq5_ddr_bga dq6_ddr_bga dq7_ddr_bga dqs_p_ddr_bga dqs_n_ddr_bga")
             deck.append("+ dq0_soc_bga dq1_soc_bga dq2_soc_bga dq3_soc_bga dq4_soc_bga dq5_soc_bga dq6_soc_bga dq7_soc_bga dqs_p_soc_bga dqs_n_soc_bga")
-            deck.append("+ BYTE%s" %(str(i)))
+            deck.append("+ BYTE%s" %(thisByte.byteID))
             deck.append("")
                 
             # Output
@@ -975,6 +1091,19 @@ class Design:
             if compName == c.compID:
                 return c
         return NULL
+
+    def getDatarate(self, clkfreq):
+        clkfreq = float(clkfreq)
+        if clkfreq > 800/2*0.95 and clkfreq < 800/2*1.05:
+            return '800'
+        if clkfreq > 1066/2*0.95 and clkfreq < 1066/2*1.05:
+            return '1066'
+        if clkfreq > 1333/2*0.95 and clkfreq < 1333/2*1.05:
+            return '1333'
+        if clkfreq > 1600/2*0.95 and clkfreq < 1600/2*1.05:
+            return '1600'
+        if clkfreq > 1866/2*0.95 and clkfreq < 1866/2*1.05:
+            return '1866'
 
     def parseIbisCompNum(self, ibisFile):
         ibisCompName = []
@@ -1060,6 +1189,7 @@ class Component:
         self.compModelFile = modelFile
         self.compManufacture = manufacture
         self.compIbis = IbisModel(self.compID, self.compModelFile)
+        self.isDIMM = 0
         self.r_pkg = ''
         self.l_pkg = ''
         self.c_pkg = ''
