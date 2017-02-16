@@ -12,3 +12,4 @@ RUN cd /tmp && \
   /usr/local/bin/python3 get-pip.py && \
   pip install numpy
 
+ADD mkl_so/* /usr/local/lib/
