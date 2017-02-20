@@ -8,6 +8,7 @@ RUN \
   yum clean all
 
 RUN useradd -ms /bin/bash deploy
+RUN mkdir -p /app/
 RUN chown -R deploy /app
 USER deploy
 WORKDIR /app
