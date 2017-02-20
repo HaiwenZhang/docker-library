@@ -15,9 +15,16 @@ RUN \
 
 # Project
 RUN mkdir -p /app/log/ && mkdir -p /app/tmp/ && mkdir -p /app/tmp/pids/
-WORKDIR /app
 
 # Bundle
 ADD ./Gemfile Gemfile
 Add ./Gemfile.lock Gemfile.lock
 RUN bundle install
+
+RUN useradd -ms /bin/bash deploy
+
+RUN chown -R deploy /app
+USER deploy
+WORKDIR /app
+
+
