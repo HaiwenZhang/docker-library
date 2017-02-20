@@ -1,9 +1,6 @@
 FROM centos:7
 MAINTAINER Aurora System <it@aurora-system.com>
 
-# Project
-RUN mkdir -p /app/log && mkdir -p /app/tmp
-WORKDIR /app
 
 # Dependence
 RUN yum install -y wget gcc automake autoconf libtool make gcc-c++ gtk2 libXtst cmake bison libXaw && yum clean all
@@ -39,4 +36,7 @@ RUN \
 RUN mkdir -p /usr/share/fonts/wqy-microhei
 ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
 RUN fc-cache /usr/share/fonts/wqy-microhei
-
+RUN useradd -ms /bin/bash deploy
+USER deploy
+RUN mkdir -p /app
+WORKDIR /app

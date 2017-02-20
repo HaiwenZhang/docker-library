@@ -22,7 +22,6 @@ RUN bundle install
 RUN useradd -ms /bin/bash deploy
 RUN mkdir -p /app/
 RUN chown -R deploy /app
-RUN mkdir -p /app/log/ && mkdir -p /app/tmp/ && mkdir -p /app/tmp/pids/
 USER deploy
 WORKDIR /app
 
