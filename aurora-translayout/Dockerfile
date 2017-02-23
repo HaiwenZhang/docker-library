@@ -1,7 +1,7 @@
 FROM aurorasystem/server:latest
 MAINTAINER Aurora System <it@aurora-system.com>
 
-USER root
+#USER root
 
 # Node
 RUN \
@@ -9,5 +9,5 @@ RUN \
   yum -y install bzip2 nodejs && \
   yum clean all
 
-RUN useradd -ms /bin/bash deploy
-USER deploy
+#RUN useradd -ms /bin/bash deploy
+#USER deploy

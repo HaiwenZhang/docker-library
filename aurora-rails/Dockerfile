@@ -19,10 +19,10 @@ ADD ./Gemfile Gemfile
 Add ./Gemfile.lock Gemfile.lock
 RUN bundle install
 
-RUN useradd -ms /bin/bash deploy
+#RUN useradd -ms /bin/bash deploy
 RUN mkdir -p /app/
-RUN chown -R deploy /app
-USER deploy
+#RUN chown -R deploy /app
+#USER deploy
 WORKDIR /app
 
 

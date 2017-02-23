@@ -36,7 +36,7 @@ RUN \
 RUN mkdir -p /usr/share/fonts/wqy-microhei
 ADD ./wqy-microhei.ttc /usr/share/fonts/wqy-microhei/wqy-microhei.ttc
 RUN fc-cache /usr/share/fonts/wqy-microhei
-RUN useradd -ms /bin/bash deploy
-USER deploy
+#RUN useradd -ms /bin/bash deploy
+#USER deploy
 RUN mkdir -p /app
 WORKDIR /app
