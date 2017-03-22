@@ -1,6 +1,9 @@
 ######################
 ##### ASIV-PPROC #####
 ######################
+# v0.4 (170210)
+# Add the plot for DQS
+# Removed the first 10 crossing points of DQS
 
 # v0.3 (170115)
 # Refined calculation for EW, EH, and timing margins. 
@@ -29,11 +32,15 @@
 # TO-DO:
 # 
 
+import shutil
 import logging
 import os.path
 import sys
 import numpy as np
-#import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    pass
 
 class Pproc:
     def __init__(self, projectDir, plotflag):
@@ -51,6 +58,7 @@ class Pproc:
             rawfile = self.projectDir + '/data/byte' + thisByte.byteID + '_wt.raw'
             self.readRaw(thisByte, rawfile)
             self.procRaw(thisByte, rawfile)
+
                 
     def readConfig(self, file):
         self.modelPath = self.projectDir + '/models/'
@@ -99,6 +107,7 @@ class Pproc:
         thisByte.wfm_dq7 = []
         thisByte.wfm_dqsp = []
         thisByte.wfm_dqsn = []
+        thisByte.wfm_dqspn = []
         with open(rawfile, 'r') as f:
             flag = 0
             for line in f:
@@ -130,6 +139,7 @@ class Pproc:
                     thisByte.wfm_dqsp.append(float(nextline.split()[0]))
                     nextline = next(f)
                     thisByte.wfm_dqsn.append(float(nextline.split()[0]))
+                    thisByte.wfm_dqspn.append(thisByte.wfm_dqsp[-1] - thisByte.wfm_dqsn[-1])
                     for i in range(8): nextline = next(f)   # skip dq*_dig_out
             #print((thisByte.wfm_dqsn[0:10]))
 
@@ -146,17 +156,38 @@ class Pproc:
         datarate = int(self.interfaces[0].dataRate) * 1e6
         self.geteyemask(self.interfaces[0], self.interfaces[0].ddrType, datarate)
         vref = self.interfaces[0].vref
-        self.eye(thisByte.wfm_dq0, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ0')
-        self.eye(thisByte.wfm_dq1, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ1')
-        self.eye(thisByte.wfm_dq2, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ2')
-        self.eye(thisByte.wfm_dq3, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ3')
-        self.eye(thisByte.wfm_dq4, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ4')
-        self.eye(thisByte.wfm_dq5, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ5')
-        self.eye(thisByte.wfm_dq6, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ6')
-        self.eye(thisByte.wfm_dq7, wfm_dqs, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ7')
+        parameter = []
+        self.eye(thisByte.wfm_dq0, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ0', parameter)
+        self.eye(thisByte.wfm_dq1, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ1', parameter)
+        self.eye(thisByte.wfm_dq2, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ2', parameter)
+        self.eye(thisByte.wfm_dq3, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ3', parameter)
+        self.eye(thisByte.wfm_dq4, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ4', parameter)
+        self.eye(thisByte.wfm_dq5, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ5', parameter)
+        self.eye(thisByte.wfm_dq6, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ6', parameter)
+        self.eye(thisByte.wfm_dq7, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQ7', parameter)
+        self.eye(thisByte.wfm_dqspn, thisByte.wfm_dqspn, thisByte.wfm_time, datarate, vref, self.interfaces[0].eyemask, resultfolder+'/DQS', [])
+        fpara = open(resultfolder+'/eye_parameter.txt', 'w')
+        fpara.write('ui: %.6e\n' % (parameter[0]))
+        fpara.write('minimun HIGH: %.6e\n' % (parameter[1]))
+        fpara.write('maximum LOW: %.6e\n' % (parameter[2]))
+        fpara.write('eye height: %.6e\n' % (parameter[3]))
+        fpara.write('eye width: %.6e\n' % (parameter[4]))
+        fpara.write('jitter: %.6e\n' % ((parameter[5]-parameter[6]) * 1e-12))
+        fpara.write('top margin: %.6e\n' % (parameter[7]))
+        fpara.write('bottom margin: %.6e\n' % (parameter[8]))
+        fpara.write('left margin: %.6e\n' % (parameter[9]))
+        fpara.write('right margin: %.6e\n' % (parameter[10]))
+        fpara.write('eye mask: \n')
+        for i in range(6):
+            fpara.write('%.6e\t%.6e\n' % (self.interfaces[0].eyemask[i][0], self.interfaces[0].eyemask[i][1]))
+        fpara.write('skew spec DQ-DQS routing: %.6e\n' % (self.interfaces[0].skew_dq_dqs))
+        fpara.close
+        shutil.copyfile(resultfolder+'/DQ0/trigger.txt',resultfolder+'/trigger.txt')
         #print(resultfolder)
         
-    def eye(self, dq, dqs, t, datarate, vref, eyemask, path):
+    def eye(self, dq, dqs, t, datarate, vref, eyemask, path, parameter):
+        print('len of signal is:', len(dq))
+        print('len of trigger is:', len(dqs))
         try:
             os.mkdir(path)
         except:
@@ -205,11 +236,12 @@ class Pproc:
 
         # Find the zero-crossing of DQS
         dqs_crossings = self.edge(dqs, 0, 0.1, -0.1)
+        dqs_crossings = dqs_crossings[10:]  # remove first 10 crossing points
         print ('number of trigger point: %d' % (len(dqs_crossings)))
-        fout = open('trigger.txt', 'w')
-        for t in dqs_crossings:
-            fout.writelines('%.6e\n' % (t_intp[t]))
-        fout.close()
+        #fout = open('trigger.txt', 'w')
+        #for t in dqs_crossings:
+           # fout.writelines('%.6e\n' % (t_intp[t]))
+        #fout.close()
         #for a in dqs_crossings: print ('%.6e'%(t_intp[a]))
 
         # Plot eye
@@ -312,7 +344,41 @@ class Pproc:
         for i in range(6):
             f2.write('%.6e\t%.6e\n' % (eyemask[i][0], eyemask[i][1]))
         f2.write('skew spec DQ-DQS routing: %.6e\n' % (self.interfaces[0].skew_dq_dqs))
-        f2.close()              
+        f2.close()
+        if parameter == []:
+            parameter.append(ui)
+            parameter.append(min_high)
+            parameter.append(max_low)
+            parameter.append(eyeheight)
+            parameter.append(eyewidth)
+            parameter.append(xmax)
+            parameter.append(xmin)
+            parameter.append(top_margin)
+            parameter.append(bottom_margin)
+            parameter.append(left_margin)
+            parameter.append(right_margin)
+        else:
+            if parameter[1] < min_high:
+                parameter[1] = min_high
+            if parameter[2] > max_low:
+                parameter[2] = max_low
+            if parameter[3] > eyeheight:
+                parameter[3] = eyeheight
+            if parameter[4] > eyewidth:
+                parameter[4] = eyewidth
+            if parameter[5] < xmax:
+                parameter[5] = xmax
+            if parameter[6] > xmin:
+                parameter[6] = xmin
+            if parameter[7] > top_margin:
+                parameter[7] = top_margin
+            if parameter[8] > bottom_margin:
+                parameter[8] = bottom_margin
+            if parameter[9] > left_margin:
+                parameter[9] = left_margin
+            if parameter[10] > right_margin:
+                parameter[10] = right_margin
+
 
     def geteyemask(self, thisInterface, ddrtype, datarate):
         # set vref
@@ -414,6 +480,7 @@ class Byte:
         self.wfm_dq7 = []
         self.wfm_dqsp = []
         self.wfm_dqsn = []
+        self.wfm_dqspn = []
         self.wfm_alldq_time = []
         self.wfm_alldq_dq = []
         self.wfm_alldq_dqs = []
@@ -425,7 +492,7 @@ class Signal:
         self.ddrPin = []
         
 if __name__ == "__main__":
-    #logging.basicConfig(level=logging.DEBUG)    # uncomment this line to output debug info
+    logging.basicConfig(level=logging.DEBUG)    # uncomment this line to output debug info
     if not (len(sys.argv) == 2 or len(sys.argv) == 3):
         print('Error! Usage: python3 pproc.py <path_to_interface_folder>')
         exit()
